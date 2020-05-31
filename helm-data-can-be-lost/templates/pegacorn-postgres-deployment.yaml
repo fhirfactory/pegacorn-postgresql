@@ -1,0 +1,106 @@
+---
+apiVersion: apps/v1 
+kind: Deployment
+metadata:
+  labels:
+    app: {{ .Values.serviceName }}
+    version: "{{ .Values.imageTag }}"
+    group: net.fhirbox.pegacorn
+  name: {{ .Values.serviceName }}
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app: {{ .Values.serviceName }}
+      group: net.fhirbox.pegacorn
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.serviceName }}
+        version: "{{ .Values.imageTag }}"
+        group: net.fhirbox.pegacorn
+        date: "{{ date "20060102-150405" .Release.Time }}"
+    spec:
+      {{- if (.Values.acrSecretName) }} 
+      imagePullSecrets:
+        - name: {{ .Values.acrSecretName }}
+      {{- end }}
+      {{- if (.Values.nodeAffinityLabel) }} 
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 1
+            preference:
+              matchExpressions:
+              - key: {{ .Values.nodeAffinityLabel }}
+                operator: In
+                values:
+                - "Yes"
+      {{- end }}
+      containers:
+      - env:
+        - name: POSTGRES_USER
+          value: {{ .Values.dbUser }}
+        - name: POSTGRES_DB
+          value: {{ .Values.dbName }}
+        - name: KUBERNETES_SERVICE_NAME
+          value: {{ .Values.serviceName }}
+        - name: MY_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: MY_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: MY_POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: MY_POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: MY_POD_SERVICE_ACCOUNT
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.serviceAccountName
+        - name: KUBERNETES_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        image: {{ .Values.dockerRepo }}pegacorn/pegacorn-postgres:{{ .Values.imageTag }}
+        imagePullPolicy: {{ .Values.imagePullPolicy | default "IfNotPresent" }}
+#        livenessProbe:
+#          httpGet:
+#            path: /health
+#            port: 9990
+#            scheme: HTTP
+#          initialDelaySeconds: 30
+        name: postgres
+        ports:
+        - containerPort: 5432
+          name: http
+          protocol: TCP
+#        readinessProbe:
+#          httpGet:
+#            path: /health
+#            port: 9990
+#            scheme: HTTP
+#          initialDelaySeconds: 10
+        securityContext:
+          privileged: false
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data          
+        - name: certificates
+          mountPath: /var/lib/pegacorn-ssl-certs          
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds | default 30 }}
+      volumes:
+      - name: postgres-data
+        hostPath:
+          path: {{ .Values.hostPath }}
+      - name: certificates
+        hostPath:
+          path: {{ .Values.hostPathCerts }}

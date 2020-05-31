@@ -1,0 +1,88 @@
+Postgres SSL implementation for Fhirplace and Hapi Fhir Jpa Server
+==================================================================
+
+Aim
+===
+To set up a secure Postgres instance configured for SSL certificate authentication and avoid the use of passwords for database access by Pegacorn services. 
+The scenario is a Kubernetes persistent volume hosting a database of sensitive data (Fhirplace) with client interaction limited to the Hapi Fhir Jpa Server 
+service and only via certificate authentication.
+
+Changes
+=======
+
+Docker hub image postgres:12.2-alpine is now specified (previously used alpine which is moved to point to the latest stable version) to ensure that we 
+always source the same base: https://hub.docker.com/_/postgres
+
+Creation of fhirplace-certs directory to hold the fhirplace certificate files, noting that the client certificates were put in this folder rather than
+in the calling application (e.g. ladon or hapi-fhir-jpaserver) to centralise the location of the certificates.  
+TODO: In a future change these certificates should be injected in.
+
+The docker-entrypoint.sh script from the 12.2-alpine image 
+(https://github.com/docker-library/postgres/blob/33bccfcaddd0679f55ee1028c012d26cd196537d/12/alpine/docker-entrypoint.sh) has been modified so no password 
+is necessary for the creation of the default database (which will be named the value of the POSTGRES_DB environment variable.
+  ----------
+  NOTE on the merging of the two docker-entrypoint.sh scripts together (that was in the initial pull request) so there is now no need for the fhirplace-init 
+  ... the two required changes were:
+  1. When calling eval 'initdb --username="$POSTGRES_USER", don't pass through "$@" as we want to use the default pg_hba.conf, where as "$@" is where we 
+     specify our custom config location that only allows certificate based authentication;
+  2. When calling docker_temp_server_start "$@", don't pass through "$@" as we want to use the default pg_hba.conf, where as "$@" is where we specify our 
+     custom config location that only allows certificate based authentication;
+  ----------
+
+The ENTRYPOINT script was also changed so the references to certificates files were updated as the container was starting up, sourced from a volume.  
+This allows a the docker image to be a template that can then use specific certificates for each container.
+
+The pg_hba.conf has been locked down with only the following entries:
+hostssl all             postgres        ::/0                    reject
+hostssl all             postgres        0.0.0.0/0               reject
+hostssl all             pegacorn        ::/0                    cert clientcert=1
+hostssl all             pegacorn        0.0.0.0/0               cert clientcert=1
+
+The access restrictions on the postgres user are not really necessary but left in to ensure *only* our pegacorn has database access. All postgres environment variables values were also removed from the deployment YAML file (POSTGRES_USER, POSTGRES_PASSWORD (removed completely), POSTGRES_DB) and now need to be specified on the helm command line at deployment time using the dbUser and dbName key/value pairs.
+
+NOTE: based on https://dba.stackexchange.com/questions/8580/force-postgresql-clients-to-use-ssl, we have forced SSL connections only because
+1.	We have ssl = on in postgresql.conf
+2.	AND we only have hostssl entries in pg_hba.conf
+
+Configuration and startup
+=========================
+# build and deploy postgres instances
+C:
+cd \dev\pegacorn-fhirplace
+docker build --rm -t pegacorn/pegacorn-postgres:1.0.0-snapshot --file Dockerfile .
+
+helm upgrade pegacorn-fhirplace-site-a --install --namespace site-a --set serviceName=pegacorn-fhirplace,nodeAffinityLabel=fhirplace,hostPath=/kube-vols/fhirplace-site-a/data,hostPathCerts=/kube-vols/certificates,basePort=30000,imageTag=1.0.0-snapshot,dbUser=pegacorn,dbName=hapi,serviceType=NodePort helm-postgres
+
+helm upgrade pegacorn-hestia-dam-site-a --install --namespace site-a --set serviceName=pegacorn-hestia-dam,nodeAffinityLabel=hestia,hostPath=/kube-vols/hestia-dam-site-a/data,hostPathCerts=/kube-vols/certificates,basePort=30010,imageTag=1.0.0-snapshot,dbUser=pegacorn,dbName=hapi,serviceType=NodePort helm-postgres
+
+Tests
+=====
+To ensure restoring md5 access does not allow access to the db, including through an accidential defect, the following entry was added to the pg_hba.conf file:
+local all pegacorn    md5
+
+From the container attempts were made to login. The commands and corresponding output are shown.
+bash-5.0# psql -U pegacorn -l
+Password for user pegacorn: <no password provided>
+psql: error: could not connect to server: fe_sendauth: no password supplied
+
+bash-5.0# psql -U pegacorn -l
+Password for user pegacorn: <a password was entered>
+psql: error: could not connect to server: FATAL:  password authentication failed for user "pegacorn"
+
+The following pg_hba.conf file entry was also tested with an attempt to connect from another container:
+host all pegacorn 0.0.0.0/0 md5
+
+bash-5.0# psql -h 10.1.1.78 -U pegacorn -l
+Password for user pegacorn: <no password provided>
+
+psql: error: could not connect to server: fe_sendauth: no password supplied
+bash-5.0# psql -h 10.1.1.78 -U pegacorn -l
+Password for user pegacorn: <a password was entered>
+psql: error: could not connect to server: FATAL:  password authentication failed for user "pegacorn"
+FATAL:  password authentication failed for user "pegacorn"
+
+Through PgAdmin, same errors occurred as above:
+<no password provided>: fe_sendauth: no password supplied
+<password provided>: FATAL: password authentication failed for user "pegacorn"
+
+

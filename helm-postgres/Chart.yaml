@@ -1,0 +1,4 @@
+---
+name: pegacorn-postgres
+version: 1.0.0-snapshot
+description: Postgres DB with certificate authentication and avoids the creation of a credential with a password

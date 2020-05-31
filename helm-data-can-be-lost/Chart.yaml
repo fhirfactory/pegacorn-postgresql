@@ -1,0 +1,4 @@
+---
+name: pegacorn-postrges-data-can-be-lost
+version: 1.0.0-snapshot
+description: Postgres storage of a single instance behind a kubernetes service that is a persisted cache with no reliance on needing the data on restart.  The data is NOT replicated or stored on persistent storage, so if a node crashes, the data will be lost.  So applications using this need to be able to recreate the data e.g. keycloak authorisation, which is why the description persisted cache is used.
