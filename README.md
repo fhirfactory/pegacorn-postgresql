@@ -17,7 +17,8 @@ docker container run --rm -it -v /:/host alpine
 > chroot /host
 > mkdir -p /kube-vols
 > cp -r /host_mnt/c/host-files/* /kube-vols/
-# NOTE: sometimes files are cached for some unknown reason, so copy to new file names in Windows, transfer to the DockerDesktop VM, delete the old file, then move the new file name to the desired file name
+# NOTE: sometimes files are cached for some unknown reason, so copy to new file names in Windows, transfer
+# to the DockerDesktop VM, delete the old file, then move the new file name to the desired file name
 > exit
 ```
 
@@ -82,6 +83,7 @@ FATAL: no pg_hba.conf entry for host "<IP Address>", user "pegacorn", database "
   * Client certificate key: C:\host-files\certificates\pegacorn.key
   * Root certificate: C:\host-files\certificates\ca.cer
 * Click on Save and confirm that the connection is successful
+
 From https://medium.com/@pavelevstigneev/postgresql-ssl-with-letsencrypt-b53051eacc22
 * In pgAdmin select the Tools -> Query Tool menu option and run the following 2 sql statements:
 ```
