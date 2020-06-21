@@ -40,6 +40,11 @@ setup_config_files() {
 		chown postgres:postgres /var/lib/postgresql/config/ca.cer 
 
 		ls -la /var/lib/postgresql/config/
+
+	    # Replace all instances of pegacorn with the value in the environment variable $POSTGRES_USER in the /var/lib/postgresql/config/pg_hba.conf file
+		sed -i "s/pegacorn/$POSTGRES_USER/g" "/var/lib/postgresql/config/pg_hba.conf"
+		cat "/var/lib/postgresql/config/pg_hba.conf"
+		echo ""
 	fi
 }
 
